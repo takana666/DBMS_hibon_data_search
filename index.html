@@ -1,0 +1,1836 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>DBMS非凡データ検索（仮テスト中）</title>
+  <style>
+    /* 全体基本文字サイズ：12pt */
+    .filter-panel, .table-panel {
+      font-size: 12pt;
+    }
+    /* チェックボックスは縦位置中央 */
+    input[type="checkbox"] {
+      vertical-align: middle;
+      margin: 0;
+    }
+    /* v18: 一部標準チェック（発動位置ソート等）のチェック色を明示（視認性向上） */
+    #sortEffect,
+    #considerStraightDistance{
+      accent-color: #1e90ff;
+    }
+
+    /* 全体レイアウト */
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      font-family: Arial, sans-serif;
+    }
+    .container {
+      display: flex;
+      height: 100%;
+    }
+    /* 左側フィルタ領域（幅25%） */
+    .filter-panel {
+      width: 25%;
+      padding: 10px;
+      padding-left: 20px; /* 左側に余白を追加 */
+      box-sizing: border-box;
+      border-right: 1px solid #ccc;
+      overflow-y: auto;
+    }
+    /* 各フィルターグループ：flexレイアウト */
+    .filter-group {
+      margin-top: 15px;
+    }
+    .filter-group h4 {
+      margin: 10px 0 5px;
+      font-size: 12pt;
+    }
+    .checkboxes {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+    /* 天候グループ：ラベル末尾に全角スペースを追加 */
+    .checkboxes.weather label::after {
+      content: "　";
+    }
+    /* 馬場グループ：ラベル末尾に全角スペースを追加 */
+    .checkboxes.baba label::after {
+      content: "　";
+    }
+    /* 右側テーブル領域：横スクロールを有効に */
+    .table-panel {
+      width: 75%;
+      padding: 10px;
+      box-sizing: border-box;
+      max-height: 100vh;
+      overflow-y: auto;
+      overflow-x: auto;
+    }
+    /* テーブル固定レイアウトと列幅指定 */
+    table {
+      width: 100%;
+      table-layout: fixed;
+      border-collapse: collapse;
+    }
+    colgroup col {
+      /* 固定列幅（指定通り） */
+      /* 馬名/非凡名:150px, 常時:60px, 発動位置:70px, コンディション:70px, 縛り:70px, 発揮効果:350px, 発揮条件:350px, 発揮対象:100px, 発揮確率:80px */
+    }
+    /* テーブルセル：全テキスト表示（折り返し）＋フォントサイズ12pt */
+    th, td {
+      border: 1px solid #ccc;
+      padding: 5px;
+      text-align: left;
+      vertical-align: top;
+      white-space: normal;
+      word-break: break-word;
+      overflow: visible;
+      font-size: 12pt;
+    }
+    /* テーブルヘッダー固定 */
+    th {
+      position: sticky;
+      top: 0;
+      background: #fff;
+      z-index: 100;
+      border-bottom: 2px solid #ccc;
+      box-shadow: 0 2px 2px 0 rgba(0,0,0,0.5);
+    }
+    
+    /* 注意書き部分 */    
+    .update-note { font-weight: normal; margin: 8px 0; }
+    .update-note__title { margin: 0 0 6px; font-weight: normal; }
+    .update-note__list { margin: 0 6px 6px 1.2em; padding: 0; list-style: none; }
+    .update-note__list li { line-height: 1.6; }
+    .update-note__list li::before { content: "・"; margin-right: .25em; position: relative; left: -.6em; }
+    .update-note__caution { margin: 0; color: #B00020; font-weight: normal; }
+
+
+  
+    /* 追加：発動効果フィルター（囲い） */
+    .effect-filter-box {
+      border: 2px solid #999;
+      border-radius: 8px;
+      padding: 8px;
+      margin-top: 10px;
+      background: #fafafa;
+    }
+    .effect-filter-box .effect-filter-title{
+      font-weight: bold;
+      margin: 2px 0 8px 0;
+      font-size: 12pt;
+    }
+
+    /* 追加：チェックボックスを詰めて並べる（騎乗指示/天候/馬場用） */
+    .checkboxes.compact-row{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .checkboxes.compact-row label{
+      margin-right: 0;
+      margin-bottom: 0;
+    }
+
+  
+    /* v5: チェックボックス整列（天候/馬場/常時バフ/発動効果） */
+    .checkboxes.checkbox-row{
+      display: flex;
+      flex-wrap: wrap;
+      column-gap: 6px;
+      row-gap: 2px;
+    }
+    .checkboxes.checkbox-row label{
+      display: inline-flex;
+      align-items: center;
+      margin: 0;
+      white-space: nowrap;
+    }
+    .checkboxes.checkbox-row input[type="checkbox"]{
+      margin: 0 4px 0 0;
+    }
+    .checkboxes.checkbox-row .lbltxt{
+      display: inline-block;
+      line-height: 1.1;
+    }
+    /* 天候/馬場：短いラベルを同幅に */
+    .checkboxes.checkbox-row .lbltxt.w2{ min-width: 2.2em; }
+    /* 常時バフ/発動効果：選択肢ラベルを揃える */
+    .checkboxes.checkbox-row .lbltxt.w5{ min-width: 5.5em; }
+
+    /* スピ：/スタ： の前置きを詰めて揃える */
+    .prefix-label{
+      display:inline-block;
+      min-width: 3.0em;
+      margin-right: 0;
+    }
+
+  
+    /* v6: tighter alignment */
+    .checkboxes.checkbox-row label{
+      line-height: 1.0;
+    }
+    .checkboxes.checkbox-row input[type="checkbox"]{
+      margin: 0 3px 0 0;
+      vertical-align: middle;
+      position: relative;
+      top: -1px;
+    }
+    /* 幅固定を無効化（間延び防止） */
+    .checkboxes.checkbox-row .lbltxt.w2{ min-width: 0 !important; }
+    .checkboxes.checkbox-row .lbltxt.w5{ min-width: 0 !important; }
+    .prefix-label{ min-width: 2.6em; }
+
+  
+    /* v6: classic checkbox layout (騎乗指示/天候/馬場) */
+    .filter-group .checkboxes label{
+      display: inline-flex;
+      align-items: center;
+      white-space: nowrap;
+    }
+    .filter-group .checkboxes input[type="checkbox"]{
+      margin-right: 4px;
+      position: relative;
+      top: -1px;
+    }
+
+  
+    /* v7: 発動効果フィルター内のチェックボックス整列を強化 */
+    .effect-filter-box .checkboxes{
+      display: flex;
+      flex-wrap: wrap;
+      column-gap: 10px;
+      row-gap: 4px;
+    }
+    .effect-filter-box .checkboxes label{
+      display: inline-flex;
+      align-items: center;
+      line-height: 1.1;
+      margin: 0;
+      white-space: nowrap;
+    }
+    .effect-filter-box .checkboxes input[type="checkbox"]{
+      width: 14px;
+      height: 14px;
+      margin: 0 4px 0 0;
+      vertical-align: middle;
+      position: relative;
+      top: 0;
+    }
+
+  
+    /* v8: 騎乗指示/天候/馬場のチェック位置を統一 */
+    .checkboxes.align-row{
+      display: flex;
+      flex-wrap: wrap;
+      column-gap: 10px;
+      row-gap: 6px;
+    }
+    .checkboxes.align-row label{
+      display: inline-flex;
+      align-items: center;
+      margin: 0;
+      line-height: 1.1;
+      white-space: nowrap;
+    }
+    .checkboxes.align-row input[type="checkbox"]{
+      width: 14px;
+      height: 14px;
+      margin: 0 4px 0 0;
+      vertical-align: middle;
+      position: relative;
+      top: 0;
+    }
+
+  
+    /* v9: 騎乗指示/天候/馬場のみ 擬似チェックボックス化（上下ズレ完全解消） */
+    .checkboxes.align-row input[type="checkbox"]{
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      border: 1px solid #555;
+      border-radius: 3px;
+      background: #fff;
+      display: inline-block;
+      position: relative;
+      margin: 0 4px 0 0;
+      vertical-align: middle;
+      flex: 0 0 auto;
+    }
+    .checkboxes.align-row input[type="checkbox"]::after{
+      content: "";
+      position: absolute;
+      left: 4px;
+      top: 1px;
+      width: 5px;
+      height: 9px;
+      border-right: 2px solid #111;
+      border-bottom: 2px solid #111;
+      transform: rotate(45deg);
+      opacity: 0;
+    }
+    .checkboxes.align-row input[type="checkbox"]:checked{
+      background: #1e90ff;
+      border-color: #1e90ff;
+    }
+.checkboxes.align-row input[type="checkbox"]:checked::after{
+      opacity: 1;
+      border-right-color: #fff;
+      border-bottom-color: #fff;
+    }
+    /* タップ領域（スマホでも押しやすく） */
+    .checkboxes.align-row label{
+      padding: 2px 0;
+    }
+    @media (max-width: 600px){
+      .checkboxes.align-row input[type="checkbox"]{
+        width: 18px;
+        height: 18px;
+      }
+      .checkboxes.align-row input[type="checkbox"]::after{
+        left: 5px;
+        top: 2px;
+        width: 6px;
+        height: 10px;
+      }
+    }
+
+  
+    /* v17: 非凡種別/天性チェックボックスも騎乗指示と同じ見た目・位置に統一 */
+    .checkboxes.hibonType input[type="checkbox"],
+    #tenseiOnly,
+    #threeFactorsOnly,
+    #sortEffect,
+    #considerStraightDistance{
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      border: 1px solid #555;
+      border-radius: 3px;
+      background: #fff;
+      display: inline-block;
+      position: relative;
+      margin: 0 4px 0 0;
+      vertical-align: middle;
+      flex: 0 0 auto;
+      top: 0;
+    }
+    .checkboxes.hibonType input[type="checkbox"]::after,
+    #tenseiOnly::after,
+    #threeFactorsOnly::after,
+    #sortEffect::after,
+    #considerStraightDistance::after{
+      content: "";
+      position: absolute;
+      left: 4px;
+      top: 1px;
+      width: 5px;
+      height: 9px;
+      border-right: 2px solid #111;
+      border-bottom: 2px solid #111;
+      transform: rotate(45deg);
+      opacity: 0;
+    }
+    .checkboxes.hibonType input[type="checkbox"]:checked,
+    #tenseiOnly:checked,
+    #threeFactorsOnly:checked,
+    #sortEffect:checked,
+    #considerStraightDistance:checked{
+      background: #1e90ff;
+      border-color: #1e90ff;
+    }
+    .checkboxes.hibonType input[type="checkbox"]:checked::after,
+    #tenseiOnly:checked::after,
+    #threeFactorsOnly:checked::after,
+    #sortEffect:checked::after,
+    #considerStraightDistance:checked::after{
+      opacity: 1;
+      border-right-color: #fff;
+      border-bottom-color: #fff;
+    }
+    @media (max-width: 600px){
+      .checkboxes.hibonType input[type="checkbox"],
+      #tenseiOnly,
+      #threeFactorsOnly,
+      #sortEffect,
+      #considerStraightDistance{
+        width: 18px;
+        height: 18px;
+      }
+      .checkboxes.hibonType input[type="checkbox"]::after,
+      #tenseiOnly::after,
+      #threeFactorsOnly::after,
+      #sortEffect::after,
+      #considerStraightDistance::after{
+        left: 5px;
+        top: 2px;
+        width: 6px;
+        height: 10px;
+      }
+    }
+
+
+    /* v10: レース選択/レース条件選択を枠で囲う */
+    .race-box{
+      border: 2px solid #999;
+      border-radius: 8px;
+      padding: 8px;
+      margin-top: 12px;
+      margin-bottom: 10px;
+      background: #fafafa;
+    }
+.race-box h4{
+      margin: 2px 0 6px 0;
+    }
+    .race-box .race-box-title{
+      font-weight: bold;
+      margin: 2px 0 8px 0;
+      font-size: 12pt;
+    }
+
+  
+    /* v14: 発動効果フィルター リセットボタン */
+    .effect-filter-titlebar{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .btn-reset{
+      font-size: 10pt;
+      padding: 4px 8px;
+      border: 1px solid #777;
+      border-radius: 6px;
+      background: #fff;
+      cursor: pointer;
+    }
+    .btn-reset:active{
+      transform: translateY(1px);
+    }
+
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- 左側フィルタ領域 -->
+    <div class="filter-panel">
+      <h3>DBMS非凡データ検索（仮テスト中）</h3>
+
+      <br>
+
+      <div class="update-note" role="note" aria-label="更新情報">
+        P26/02/23：仮リリース</p>
+        <ul class="update-note__list">
+        </ul>
+        <p class="update-note__caution">※特定レースのみで発動する非凡はフィルタ対象外です（ツインターボ翔天等）<br>
+        ※まだバグがある可能性が高いので、必ず確認の上ご利用ください</p>
+      </div>
+
+      <h3><small>データ更新日：<span id="updateDate">取得中…</span></small></h3>
+      
+      <br>
+
+      <div class="filter-group">
+        <h4>非凡種別</h4>
+        <div class="checkboxes hibonType">
+          <label><input type="checkbox" name="hibonType" value="非凡" checked>非凡</label>
+          <label><input type="checkbox" name="hibonType" value="特化非凡" checked>特化非凡</label>
+          <label><input type="checkbox" name="hibonType" value="非特化非凡" checked>非特化非凡</label>
+          <label><input type="checkbox" name="hibonType" value="弐重非凡" checked>弐重非凡</label>
+        </div>
+        <div style="margin-top:6px;"><small>※非特化：特化非凡における発揮効果その2</small></div>
+      </div>
+
+      <div class="filter-group">
+        <h4>天性</h4>
+        <div class="checkboxes">
+          <label><input type="checkbox" id="tenseiOnly">天性ありのみ</label>
+           <label><input type="checkbox" id="threeFactorsOnly">3因子のみ</label>
+        </div>
+</div>
+      <div class="race-box">
+<h4>レース選択</h4>
+      <select id="raceConditionSelect" style="width:100%; font-size:15pt;">
+        <option value="">-- 全て表示 --</option>
+        <option value="0">フェブラリーステークス</option>
+        <option value="1">高松宮記念</option>
+        <option value="2">アルクォズスプリント</option>
+        <option value="3">ドバイターフ</option>
+        <option value="4">ドバイシーマクラシック</option>
+        <option value="5">ドバイゴールデンシャヒーン</option>
+        <option value="6">ドバイワールドカップ</option>
+        <option value="7">大阪杯</option>
+        <option value="8">桜花賞</option>
+        <option value="9">皐月賞</option>
+        <option value="10">クイーンエリザベス２世カップ</option>
+        <option value="11">天皇賞(春)</option>
+        <option value="12">ＮＨＫマイルカップ</option>
+        <option value="13">ヴィクトリアマイル</option>
+        <option value="14">オークス</option>
+        <option value="15">日本ダービー</option>
+        <option value="16">安田記念</option>
+        <option value="17">宝塚記念</option>
+        <option value="18">帝王賞</option>
+        <option value="19">ジャパンダートダービー</option>
+        <option value="20">スプリンターズステークス</option>
+        <option value="21">凱旋門賞</option>
+        <option value="22">秋華賞</option>
+        <option value="23">菊花賞</option>
+        <option value="24">天皇賞(秋)</option>
+        <option value="25">エリザベス女王杯</option>
+        <option value="26">マイルチャンピオンシップ</option>
+        <option value="27">ジャパンカップ</option>
+        <option value="28">チャンピオンズカップ</option>
+        <option value="29">阪神ジュベナイルフィリーズ</option>
+        <option value="30">香港スプリント</option>
+        <option value="31">香港マイル</option>
+        <option value="32">香港カップ</option>
+        <option value="33">香港ヴァーズ</option>
+        <option value="34">朝日杯フューチュリティステークス</option>
+        <option value="35">ホープフルステークス</option>
+        <option value="36">有馬記念</option>
+        <option value="37">東京大賞典</option>
+        <option value="38">小倉大賞典</option>
+      </select>
+
+      <div style="margin-top:6px; font-size:12pt;">
+        直線距離：<span id="straightDistanceInfo">--</span>
+      </div>
+
+      <!-- 騎乗指示グループ -->
+      <div class="filter-group">
+        <h4>騎乗指示</h4>
+        <div class="checkboxes align-row">
+          <label><input type="checkbox" name="jockey" value="逃げ"> 逃げ</label>
+          <label><input type="checkbox" name="jockey" value="先行"> 先行</label>
+          <label><input type="checkbox" name="jockey" value="差し"> 差し</label>
+          <label><input type="checkbox" name="jockey" value="追込"> 追込</label>
+          <label><input type="checkbox" name="jockey" value="騎乗指示条件なし"> 騎乗指示条件なし</label>
+        </div>
+      </div>
+
+      <!-- 天候グループ -->
+      <div class="filter-group">
+        <h4>天候</h4>
+        <div class="checkboxes align-row">
+          <label><input type="checkbox" name="weather" value="晴"> 晴　</label>
+          <label><input type="checkbox" name="weather" value="曇"> 曇　</label>
+          <label><input type="checkbox" name="weather" value="雨"> 雨　</label>
+          <label><input type="checkbox" name="weather" value="雪"> 雪　</label>
+          <label><input type="checkbox" name="weather" value="天候条件なし"> 天候条件なし</label>
+        </div>
+      </div>
+
+      <!-- 馬場グループ -->
+      <div class="filter-group">
+        <h4>馬場</h4>
+        <div class="checkboxes align-row">
+          <label><input type="checkbox" name="baba" value="良"> 良　</label>
+          <label><input type="checkbox" name="baba" value="稍重"> 稍重　</label>
+          <label><input type="checkbox" name="baba" value="重"> 重　</label>
+          <label><input type="checkbox" name="baba" value="不良"> 不良　</label>
+          <label><input type="checkbox" name="baba" value="馬場条件なし"> 馬場条件なし</label>
+        </div>
+      </div>
+      </div>
+
+
+      <br>
+
+      <!-- 発揮効果フィルタグループ -->
+      <div class="effect-filter-box">
+        <div class="effect-filter-title effect-filter-titlebar"><span>発動効果フィルター</span><button type="button" id="clearEffectFilters" class="btn-reset">全て外す</button><button type="button" id="resetEffectFilters" class="btn-reset">デフォルトに戻す</button></div>
+
+      <div class="filter-group">
+        <h4>発動位置</h4>
+        <div class="checkboxes">
+          <label><input type="checkbox" name="effect" value="常時"> 常時</label>
+          <label><input type="checkbox" name="effect" value="スタート"> スタート</label>
+          <label><input type="checkbox" name="effect" value="コーナー"> コーナー</label>
+          <label><input type="checkbox" name="effect" value="発動距離"> 発動距離</label>
+        </div>
+      </div>
+
+
+      <!-- 追加フィルタ（発動時間／常時バフ／発動効果／発動回数） -->
+      <div class="filter-group">
+        <h4>常時バフ</h4>
+        <div class="checkboxes">
+          <span class="prefix-label">スピ：</span>
+          <label><input type="checkbox" name="constSpeed" value="速く" checked>速く</label>
+          <label><input type="checkbox" name="constSpeed" value="少し速く" checked>少し速く</label>
+          <label><input type="checkbox" name="constSpeed" value="無し" checked>無し</label>
+        </div>
+        <div class="checkboxes checkbox-row">
+          <span class="prefix-label">スタ：</span>
+          <label><input type="checkbox" name="constStamina" value="増える" checked>増える</label>
+          <label><input type="checkbox" name="constStamina" value="少し増える" checked>少し増える</label>
+          <label><input type="checkbox" name="constStamina" value="無し" checked>無し</label>
+        </div>
+        <small><small>
+        </small></small>
+      </div>
+
+      <div class="filter-group">
+        <h4>発動効果</h4>
+        <div class="checkboxes">
+          <span class="prefix-label">脚　：</span>
+          <label><input type="checkbox" name="actLeg" value="非常に速く" checked>非常に速く</label>
+          <label><input type="checkbox" name="actLeg" value="速く" checked>速く</label>
+          <label><input type="checkbox" name="actLeg" value="少し速く" checked>少し速く</label>
+          <label><input type="checkbox" name="actLeg" value="無し" checked>無し</label>
+        </div>
+        <div class="checkboxes checkbox-row">
+          <span class="prefix-label">スタ：</span>
+          <label><input type="checkbox" name="actStamina" value="増える" checked>増える</label>
+          <label><input type="checkbox" name="actStamina" value="少し増える" checked>少し増える</label>
+          <label><input type="checkbox" name="actStamina" value="無し" checked>無し</label>
+        </div>
+      </div>
+
+<div class="filter-group">
+        <h4>発動時間</h4>
+        <div class="checkboxes">
+          <label><input type="checkbox" name="actTime" value="とても長い時間" checked> とても長い時間</label>
+          <label><input type="checkbox" name="actTime" value="長い時間" checked> 長い時間</label>
+          <label><input type="checkbox" name="actTime" value="やや長い時間" checked> やや長い時間</label>
+          <label><input type="checkbox" name="actTime" value="短い時間" checked> 短い時間</label>
+        </div>
+      </div>
+
+      
+
+      <div class="filter-group">
+        <h4>発動回数</h4>
+        <div class="checkboxes">
+          <label><input type="checkbox" name="actCount" value="4+" checked> 4回以上</label>
+          <label><input type="checkbox" name="actCount" value="3" checked> 3回</label>
+          <label><input type="checkbox" name="actCount" value="2" checked> 2回</label>
+          <label><input type="checkbox" name="actCount" value="1-" checked> 1回以下</label>
+        </div>
+        <small><small>
+        </small></small>
+      </div>
+
+      </div>
+
+
+
+
+      <br>
+
+      <!-- 発揮位置別ソート -->
+      <div class="filter-group">
+        <h4>発動位置ソート</h4>
+        <div class="checkboxes">
+          <label><input type="checkbox" id="sortEffect"> 発揮位置別ソート</label>
+          <label style="margin-left:10px;"><input type="checkbox" id="considerStraightDistance"> 直線距離考慮</label>
+          <br><br>
+          <small><small>
+          ※以下の順にソートします<br>
+          常時のみ→スタート→コーナー→直線→〇〇m以内→それ以外<br>
+          <br>
+          直線距離考慮をチェックした場合、<br>
+          常時のみ→スタート→コーナー→発動位置＞直線距離→直線距離→発動位置＜曲線距離→それ以外<br>
+          ※直線距離はweb情報ベースであり、ゲーム内距離が同じであるかは不明です<br>
+          <br>
+          中盤発動はソート対象外です<br>
+          <br>
+          騎手才能等、一部除外しています
+          </small></small><br>
+        </div>
+      </div>
+    </div>
+
+    <!-- 右側テーブル領域 -->
+    <div class="table-panel">
+      <table id="dataTable">
+        <colgroup>
+          <col style="width: 150px;">
+          <col style="width: 60px;">
+          <col style="width: 70px;">
+          <col style="width: 70px;">
+          <col style="width: 70px;">
+          <col style="width: 350px;">
+          <col style="width: 350px;">
+          <col style="width: 100px;">
+          <col style="width: 80px;">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>馬名/非凡名</th>
+            <th>常時</th>
+            <th>発動位置</th>
+            <th>コンディション</th>
+            <th>縛り</th>
+            <th>発揮効果</th>
+            <th>発揮条件</th>
+            <th>発揮対象</th>
+            <th>発揮確率</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- CSVデータ行をここに表示 -->
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+
+  // 追加：mydata.csvのLast-ModifiedをJSTで表示
+  async function setUpdateDateFromCSV() {
+    try {
+      // 最新ヘッダを取りに行く（キャッシュ回避）
+      const res = await fetch('mydata.csv', { method: 'HEAD', cache: 'no-cache' });
+      const lastMod = res.headers.get('last-modified');
+
+      const target = document.getElementById('updateDate');
+      if (!target) return;
+
+      if (lastMod) {
+        const d = new Date(lastMod);
+        // 日本時間で YYYY/MM/DD 表示
+        const jst = new Intl.DateTimeFormat('ja-JP', {
+          timeZone: 'Asia/Tokyo',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit'
+        }).format(d);
+        target.textContent = jst;
+      } else {
+        // ヘッダが無い場合は当日の日付を表示（フォールバック）
+        const todayJst = new Intl.DateTimeFormat('ja-JP', {
+          timeZone: 'Asia/Tokyo',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit'
+        }).format(new Date());
+        target.textContent = todayJst;
+      }
+    } catch (e) {
+      // 失敗時はハイフン表示
+      const target = document.getElementById('updateDate');
+      if (target) target.textContent = '—';
+      console.error(e);
+    }
+  }
+
+  // 追加：ページ読み込み時に実行
+  setUpdateDateFromCSV();
+
+
+    
+    // 除外対象の才能名（常に表示しない）
+    const jyogai = ['Cavaliere', '龍嘶鳳冠', 'Chevalier', '虚空宿星', '人馬一体', '人馬二体', '憧憬燎火', '獅子奮迅', '未来鳳花', '気炎万丈', '天心炯眼', '意思疎通', '以心伝心', '臥竜鳳雛', '一蓮托生', '意気投合', '英姿颯爽', '寸歩不離', '神色自若', '渾然一体', '不離一体', '鼓舞激励', '機知奇策', '形影一如', '一心同体', '同腹一心', 'いいこだね！', '玉鳳舞桐花', '少壮気鋭', '中間管理録‥！', '不借身命', '王冠', '恩賞', 'Obelisk', '矜持', '燵人', '胆気', '胆力', '追撃', '追走', '蛇めっ‥！', '魅了', '憂駿', '阿吽之息', '抜山蓋世'];
+
+    // レース条件（プルダウン用／プログラム内で使用）
+    const raceConditions = [
+      { race: "小倉大賞典", distance: "1800", turfDirt: "芝", racecourse: "小倉", straight: 293.0,   age: { min: 4, max: null, label: "4歳以上" } , grade: "G3" },
+      { race: "フェブラリーステークス", distance: "1600", turfDirt: "ダート", racecourse: "東京", straight: 501.6,   age: { min: 4, max: null, label: "4歳以上" } , grade: "G1" },
+      { race: "高松宮記念",               distance: "1200", turfDirt: "芝",   racecourse: "中京", straight: 412.5,   age: { min: 4, max: null, label: "4歳以上" } , grade: "G1" },
+      { race: "アルクォズスプリント",     distance: "1200", turfDirt: "芝",   racecourse: "メイダン", straight: 1200, age: { min: 3, max: null, label: "3歳以上" } , grade: "G1" },
+      { race: "ドバイターフ",             distance: "1800", turfDirt: "芝",   racecourse: "メイダン", straight: 450, age: { min: 4, max: null, label: "4歳以上" } , grade: "G1" },
+      { race: "ドバイシーマクラシック",   distance: "2410", turfDirt: "芝",   racecourse: "メイダン", straight: 450, age: { min: 4, max: null, label: "4歳以上" } , grade: "G1" },
+      { race: "ドバイゴールデンシャヒーン", distance: "1200", turfDirt: "ダート", racecourse: "メイダン", straight: 400, age: { min: 4, max: null, label: "4歳以上" } , grade: "G1" },
+      { race: "ドバイワールドカップ",     distance: "2000", turfDirt: "ダート", racecourse: "メイダン", straight: 400, age: { min: 4, max: null, label: "4歳以上" } , grade: "G1" },
+
+      { race: "大阪杯",                   distance: "2000", turfDirt: "芝",   racecourse: "阪神", straight: 356.5,   age: { min: 4, max: null, label: "4歳以上" } , grade: "G1" },
+      { race: "桜花賞",                   distance: "1600", turfDirt: "芝",   racecourse: "阪神", straight: 473.6,   age: { min: 3, max: 3,    label: "3歳のみ" } , grade: "G1" },
+      { race: "皐月賞",                   distance: "2000", turfDirt: "芝",   racecourse: "中山", straight: 310,   age: { min: 3, max: 3,    label: "3歳のみ" } , grade: "G1" },
+      { race: "クイーンエリザベス２世カップ", distance: "2000", turfDirt: "芝", racecourse: "シャティン", straight: 430, age: { min: 3, max: null, label: "3歳以上" } , grade: "G1" },
+      { race: "天皇賞(春)",               distance: "3200", turfDirt: "芝",   racecourse: "京都", straight: 403.7,   age: { min: 4, max: null, label: "4歳以上" } , grade: "G1" },
+      { race: "ＮＨＫマイルカップ",       distance: "1600", turfDirt: "芝",   racecourse: "東京", straight: 525.9,   age: { min: 3, max: 3,    label: "3歳のみ" } , grade: "G1" },
+      { race: "ヴィクトリアマイル",       distance: "1600", turfDirt: "芝",   racecourse: "東京", straight: 525.9,   age: { min: 4, max: null, label: "4歳以上" } , grade: "G1" },
+      { race: "オークス",                 distance: "2400", turfDirt: "芝",   racecourse: "東京", straight: 525.9,   age: { min: 3, max: 3,    label: "3歳のみ" } , grade: "G1" },
+      { race: "日本ダービー",             distance: "2400", turfDirt: "芝",   racecourse: "東京", straight: 525.9,   age: { min: 3, max: 3,    label: "3歳のみ" } , grade: "G1" },
+      { race: "安田記念",                 distance: "1600", turfDirt: "芝",   racecourse: "東京", straight: 525.9,   age: { min: 3, max: null, label: "3歳以上" } , grade: "G1" },
+      { race: "宝塚記念",                 distance: "2200", turfDirt: "芝",   racecourse: "阪神", straight: 356.5,   age: { min: 3, max: null, label: "3歳以上" } , grade: "G1" },
+      { race: "帝王賞",                   distance: "2000", turfDirt: "ダート", racecourse: "大井（夜）", straight: 386, age: { min: 4, max: null, label: "4歳以上" } , grade: "G1" },
+      { race: "ジャパンダートダービー",   distance: "2000", turfDirt: "ダート", racecourse: "大井（夜）", straight: 386, age: { min: 3, max: 3, label: "3歳のみ" } , grade: "G1" },
+
+      { race: "スプリンターズステークス", distance: "1200", turfDirt: "芝",   racecourse: "中山", straight: 310,   age: { min: 3, max: null, label: "3歳以上" } , grade: "G1" },
+      { race: "凱旋門賞",                 distance: "2400", turfDirt: "芝",   racecourse: "ロンシャン", straight: 533, age: { min: 3, max: null, label: "3歳以上" } , grade: "G1" },
+      { race: "秋華賞",                   distance: "2000", turfDirt: "芝",   racecourse: "京都", straight: 328.4,   age: { min: 3, max: 3,    label: "3歳のみ" } , grade: "G1" },
+      { race: "菊花賞",                   distance: "3000", turfDirt: "芝",   racecourse: "京都", straight: 403.7,   age: { min: 3, max: 3,    label: "3歳のみ" } , grade: "G1" },
+      { race: "天皇賞(秋)",               distance: "2000", turfDirt: "芝",   racecourse: "東京", straight: 525.9,   age: { min: 3, max: null, label: "3歳以上" } , grade: "G1" },
+      { race: "エリザベス女王杯",         distance: "2200", turfDirt: "芝",   racecourse: "京都", straight: 403.7,   age: { min: 3, max: null, label: "3歳以上" } , grade: "G1" },
+      { race: "マイルチャンピオンシップ", distance: "1600", turfDirt: "芝",   racecourse: "京都", straight: 403.7,   age: { min: 3, max: null, label: "3歳以上" } , grade: "G1" },
+      { race: "ジャパンカップ",           distance: "2400", turfDirt: "芝",   racecourse: "東京", straight: 525.9,   age: { min: 3, max: null, label: "3歳以上" } , grade: "G1" },
+      { race: "チャンピオンズカップ",     distance: "1800", turfDirt: "ダート", racecourse: "中京", straight: 410.7,   age: { min: 3, max: null, label: "3歳以上" } , grade: "G1" },
+
+      { race: "阪神ジュベナイルフィリーズ", distance: "1600", turfDirt: "芝", racecourse: "阪神", straight: 473.6,   age: { min: 2, max: 2,    label: "2歳のみ" } , grade: "G1" },
+      { race: "香港スプリント",           distance: "1200", turfDirt: "芝",   racecourse: "シャティン", straight: 430, age: { min: 3, max: null, label: "3歳以上" } , grade: "G1" },
+      { race: "香港マイル",               distance: "1600", turfDirt: "芝",   racecourse: "シャティン", straight: 430, age: { min: 3, max: null, label: "3歳以上" } , grade: "G1" },
+      { race: "香港カップ",               distance: "2000", turfDirt: "芝",   racecourse: "シャティン", straight: 430, age: { min: 3, max: null, label: "3歳以上" } , grade: "G1" },
+      { race: "香港ヴァーズ",             distance: "2400", turfDirt: "芝",   racecourse: "シャティン", straight: 430, age: { min: 3, max: null, label: "3歳以上" } , grade: "G1" },
+
+      { race: "朝日杯フューチュリティステークス", distance: "1600", turfDirt: "芝", racecourse: "阪神", straight: 473.6, age: { min: 2, max: 2, label: "2歳のみ" } , grade: "G1" },
+      { race: "ホープフルステークス",     distance: "2000", turfDirt: "芝",   racecourse: "中山", straight: 310,   age: { min: 2, max: 2,    label: "2歳のみ" } , grade: "G1" },
+      { race: "有馬記念",                 distance: "2500", turfDirt: "芝",   racecourse: "中山", straight: 310,   age: { min: 3, max: null, label: "3歳以上" } , grade: "G1" },
+      { race: "東京大賞典",               distance: "2000", turfDirt: "ダート", racecourse: "大井", straight: 386,  age: { min: 3, max: null, label: "3歳以上" } , grade: "G1" }
+    ];
+
+
+    /***********************************************
+     * CSVデータ読み込みとテーブル更新処理
+     ***********************************************/
+    let csvData = [];
+
+    
+    // CSV読込（mydata.csv のみ）
+    fetch('mydata.csv')
+      .then(r => r.text())
+      .then(text => {
+        csvData = parseCSV(text);
+        filterCSVData();
+      })
+      .catch(err => console.error(err));
+
+
+    /***********************************************
+     * 改良版 CSV パーサー（セル内改行、引用符対応）
+     ***********************************************/
+    function parseCSV(text) {
+      const rows = [];
+      let current = "";
+      let currentRow = [];
+      let inQuotes = false;
+      for (let i = 0; i < text.length; i++) {
+        const c = text[i];
+        if (c === '"') {
+          if (inQuotes && i + 1 < text.length && text[i+1] === '"') {
+            current += '"';
+            i++;
+          } else {
+            inQuotes = !inQuotes;
+          }
+        } else if (c === ',' && !inQuotes) {
+          currentRow.push(current);
+          current = "";
+        } else if ((c === "\n" || c === "\r") && !inQuotes) {
+          if (c === "\r" && i + 1 < text.length && text[i+1] === "\n") { i++; }
+          currentRow.push(current);
+          rows.push(currentRow);
+          currentRow = [];
+          current = "";
+        } else {
+          current += c;
+        }
+      }
+      if (current !== "" || currentRow.length > 0) {
+        currentRow.push(current);
+        rows.push(currentRow);
+      }
+      const headers = rows[0];
+      const data = [];
+      for (let i = 1; i < rows.length; i++) {
+        const row = rows[i];
+        let record = {};
+        headers.forEach((header, j) => {
+          record[header.trim()] = row[j] ? row[j].trim() : "";
+        });
+        data.push(record);
+      }
+      return data;
+    }
+
+    /***********************************************
+     * フィルタ用関数（レース条件関連）
+     ***********************************************/
+    function checkDistance(conditionStr, selectedDistance) {
+      if (!conditionStr) return true;
+      let rangeRegex = /(\d{4})\s*[～-]\s*(\d{4})m/;
+      let rangeMatch = conditionStr.match(rangeRegex);
+      if (rangeMatch) {
+        let low = parseInt(rangeMatch[1], 10);
+        let high = parseInt(rangeMatch[2], 10);
+        let dist = parseInt(selectedDistance, 10);
+        return (dist >= low && dist <= high);
+      }
+      let matches = conditionStr.match(/(\d{4})/g);
+      if (matches) {
+        return matches.includes(selectedDistance);
+      }
+      return true;
+    }
+
+    function checkTurfDirt(conditionStr, selectedSurface) {
+      if (!conditionStr) return true;
+      if (conditionStr.indexOf("芝") !== -1 || conditionStr.indexOf("ダート") !== -1) {
+        return conditionStr.indexOf(selectedSurface) !== -1;
+      }
+      return true;
+    }
+
+    function checkRacecourse(conditionStr, selectedRacecourse) {
+      if (!conditionStr) return true;
+      if (!selectedRacecourse) return true;
+
+      // normalize spaces
+      var s = conditionStr.replace(/\u3000/g, ' ').replace(/\s+/g, ' ').trim();
+
+      // detect "大井競馬場（夜のみ）" first
+      var hasOiNight = (s.indexOf("大井競馬場（夜のみ）") !== -1);
+
+      // mask the night-only phrase so we don't accidentally match "大井" inside it
+      var s2 = s.replace(/大井競馬場（夜のみ）/g, "");
+
+      // drop generic "競馬場"
+      s2 = s2.replace(/競馬場/g, '');
+
+      // user-specified racecourses
+      var courses = [
+        "中山","東京","阪神","小倉","新潟","福島","京都","中京","函館","札幌",
+        "ロンシャン","メイダン","シャティン","大井"
+      ];
+
+      var mentioned = [];
+
+      if (hasOiNight) {
+        mentioned.push("大井（夜）");
+      }
+
+      // collect mentioned racecourses
+      for (var i = 0; i < courses.length; i++) {
+        var c = courses[i];
+        if (s2.indexOf(c) !== -1) {
+          // de-dup
+          var exists = false;
+          for (var k = 0; k < mentioned.length; k++) {
+            if (mentioned[k] === c) { exists = true; break; }
+          }
+          if (!exists) mentioned.push(c);
+        }
+      }
+
+      // no racecourse mentioned -> do not filter by racecourse
+      if (mentioned.length === 0) return true;
+
+      // if user selected "大井（夜）", allow both "大井" and "大井（夜）"
+      if (selectedRacecourse === "大井（夜）") {
+        for (var j = 0; j < mentioned.length; j++) {
+          if (mentioned[j] === "大井" || mentioned[j] === "大井（夜）") return true;
+        }
+        return false;
+      }
+
+      // otherwise exact match only
+      for (var j2 = 0; j2 < mentioned.length; j2++) {
+        if (mentioned[j2] === selectedRacecourse) return true;
+      }
+      return false;
+    }
+
+    function checkRaceName(conditionStr, selectedRaceName) {
+      if (!conditionStr) return true;
+      const knownRaces = raceConditions.map(rc => rc.race);
+      let found = false;
+      knownRaces.forEach(race => {
+        if (conditionStr.indexOf(race) !== -1) { found = true; }
+      });
+      if (found) {
+        return conditionStr.indexOf(selectedRaceName) !== -1;
+      }
+      return true;
+    }
+
+
+    /***年齢チェック**/
+    function checkAge(conditionStr, raceAge) {
+    // レース側に年齢ルールが無ければスルー
+    if (!raceAge || (raceAge.min == null && raceAge.max == null)) return true;
+
+    // 才能側（発揮条件）に年齢指定が無ければ適合とみなす（厳密にしたければ false に）
+    if (conditionStr.indexOf("年齢が") === -1) return true;
+
+    // レースが許可する年齢集合（2〜10歳を仮の全域とする）
+    const universe = Array.from({length: 9}, (_,i) => i + 2); // [2..10]
+    const raceAllowed = new Set(
+      universe.filter(a => (raceAge.min==null || a >= raceAge.min) &&
+                          (raceAge.max==null || a <= raceAge.max))
+    );
+
+    // 1) 「年齢が4歳以上」
+    const mGte = conditionStr.match(/年齢が\s*(\d{1,2})歳以上/);
+    if (mGte) {
+      const min = parseInt(mGte[1],10);
+      return universe.some(a => a >= min && raceAllowed.has(a));
+    }
+
+    // 2) 「年齢が4歳、5歳」などの列挙
+    const mListBlock = conditionStr.match(/年齢が([^。]*)/);
+    if (mListBlock) {
+      const nums = Array.from(mListBlock[1].matchAll(/(\d{1,2})\s*歳/g)).map(m => parseInt(m[1],10));
+      if (nums.length > 0) return nums.some(a => raceAllowed.has(a));
+    }
+
+    // 3) 「年齢が3歳」（単数）
+    const mSingle = conditionStr.match(/年齢が\s*(\d{1,2})\s*歳(?!以)/);
+    if (mSingle) return raceAllowed.has(parseInt(mSingle[1],10));
+
+    // マッチしないものは一旦通す
+    return true;
+  }
+
+
+
+    /***グレードチェック***/
+    function checkGrade(conditionStr, grade) {
+      if (!conditionStr) return true;
+
+      // 「GI/JpnIレース以外」を先に判定しないと、
+      // "GI/JpnIレース" が部分一致して誤判定になります
+      const hasNonG1 = conditionStr.indexOf("GI/JpnIレース以外") !== -1;
+      const hasG1Only = !hasNonG1 && (conditionStr.indexOf("GI/JpnIレース") !== -1);
+
+      // 「GI/JpnIレース」指定 → G1以外は除外
+      if (hasG1Only) return grade === "G1";
+
+      // 「GI/JpnIレース以外」指定 → G1は除外
+      if (hasNonG1) return grade !== "G1";
+
+      // グレード条件が書かれていない場合は通す
+      return true;
+    }
+
+
+    /***********************************************
+     * フィルタ用関数（チェックボックス：騎乗指示・天候・馬場）
+     ***********************************************/
+    function getCheckedValues(name) {
+      const checkboxes = document.querySelectorAll('input[name="'+name+'"]:checked');
+      return Array.from(checkboxes).map(cb => cb.value);
+    }
+
+    function checkJockey(conditionStr, selectedOptions) {
+      if (selectedOptions.length === 0) return true;
+      if (conditionStr.indexOf("騎乗指示：") !== -1) {
+        const selectedInstructions = selectedOptions.filter(val => val !== "騎乗指示条件なし");
+        if (selectedInstructions.length === 0) return false;
+        for (let ins of selectedInstructions) {
+          if (conditionStr.indexOf(ins) !== -1) return true;
+        }
+        return false;
+      } else {
+        return selectedOptions.includes("騎乗指示条件なし");
+      }
+    }
+
+    function checkWeather(conditionStr, selectedOptions) {
+      if (selectedOptions.length === 0) return true;
+      if (conditionStr.indexOf("天候が") !== -1) {
+        const selectedWeathers = selectedOptions.filter(val => val !== "天候条件なし");
+        if (selectedWeathers.length === 0) return false;
+        for (let w of selectedWeathers) {
+          if (conditionStr.indexOf(w) !== -1) return true;
+        }
+        return false;
+      } else {
+        return selectedOptions.includes("天候条件なし");
+      }
+    }
+
+    // 馬場フィルター（列挙のみ対応・範囲表記は扱わない／部分一致禁止）
+    // 方針：
+    //  - 「馬場状態が」未記載の行は “どの馬場でも可” として通す
+    //  - 「良・稍重・重・不良」の列挙のみを解釈（「以上／以下／範囲」は非対応）
+    //  - トークン内に距離や他条件が続いていても、状態語だけを厳密抽出
+    //  - 語の重なり対策：不良/稍重を先に抽出し「良/重」への誤爆を防ぐ
+    function checkBaba(conditionStr, selectedOptions) {
+      // チェックなしなら全通し
+      if (!Array.isArray(selectedOptions) || selectedOptions.length === 0) return true;
+
+      // 「馬場条件なし」は“未記載の行”にのみ意味があるため、ここでは除外
+      const selected = selectedOptions.filter(v => v !== "馬場条件なし");
+
+      // 「馬場状態が」が無い行 → どの馬場でも可（条件2のような未記載ケースを通す）
+      const marker = "馬場状態が";
+      const idx = conditionStr.indexOf(marker);
+      if (idx === -1) {
+        // 天候と同様：馬場状態が未記載の行は「馬場条件なし」チェック時のみ通す
+        return selectedOptions.includes("馬場条件なし");
+      }
+
+      // 「馬場条件なし」しか選ばれていない＝馬場記載がある行は除外
+      if (selected.length === 0) return false;
+
+      // 「馬場状態が」以降から、次の区切り語/句点/改行などまでの断片を切り出す
+      let after = conditionStr.slice(idx + marker.length);
+      const stopKeys = ["。", "レース", "コンディション", "天候が", "騎乗指示", "m", "芝", "ダート", "\n", "\r"];
+      let stop = after.length;
+      for (const k of stopKeys) {
+        const p = after.indexOf(k);
+        if (p >= 0 && p < stop) stop = p;
+      }
+      const seg = after.slice(0, stop).trim();
+
+      // 区切り正規化：読点・スラッシュ・中点・カンマ・全角/半角スペース・「または/もしくは」
+      const parts = seg
+        .replace(/[／・,]/g, "、")
+        .replace(/\s*(または|もしくは)\s*/g, "、")
+        .replace(/[\u0020\u00A0\u3000]+/g, " ") // 連続スペースを1つに
+        .split("、")
+        .map(s => s.trim())
+        .filter(Boolean);
+
+      // トークン内から状態語だけを抽出（長い語優先：不良→稍重→良→重）
+      const STATE_RE = /(不良|稍重|良|重)/g;
+      const mentioned = new Set();
+      for (const part of parts) {
+        let m;
+        while ((m = STATE_RE.exec(part)) !== null) {
+          mentioned.add(m[1]);
+        }
+      }
+
+      // いずれか一致で可（"重" は "稍重" に誤爆しない／"良" は "不良" に誤爆しない）
+      return selected.some(s => mentioned.has(s));
+    }
+
+
+
+
+    /***********************************************
+     * フィルタ用関数（発揮効果フィルタ）
+     ***********************************************/
+    function checkEffect(effectStr, selectedEffects) {
+      if (selectedEffects.length === 0) return true;
+      for (let option of selectedEffects) {
+        if (option === "常時" && effectStr.indexOf("常時") === -1) return false;
+        if (option === "スタート" && effectStr.indexOf("スタート") === -1) return false;
+        if (option === "コーナー" && effectStr.indexOf("コーナー") === -1) return false;
+        if (option === "発動距離" && (effectStr.indexOf("ゴールまで") === -1 && effectStr.indexOf("ゴールから") === -1 && effectStr.indexOf("最後の直線") === -1)) return false;
+      }
+      return true;
+    }
+
+
+    /***********************************************
+     * 追加：発動時間／効果量／発動回数 抽出
+     ***********************************************/
+    const TIME_PHRASES = ["とても長い時間", "長い時間", "やや長い時間", "短い時間"];
+
+    function normalizeEffectTextForBuff(s) {
+      if (!s) return "";
+      // 表記ゆれ吸収：早く→速く
+      return String(s).replace(/\r\n/g, "\n").replace(/早く/g, "速く");
+    }
+
+    // 「常時」行だけ抽出（複数行想定）
+    function extractConstantText(effectStr) {
+      const t = normalizeEffectTextForBuff(effectStr);
+      const lines = t.split("\n");
+      const kept = [];
+      for (let i = 0; i < lines.length; i++) {
+        const line = (lines[i] || "").trim();
+        if (!line) continue;
+        if (line.indexOf("常時") !== -1) kept.push(line);
+      }
+      return kept.join("\n");
+    }
+
+    // 「常時」行と「・効果」見出し行を除外した発動部分
+    function extractActivationText(effectStr) {
+      const t = normalizeEffectTextForBuff(effectStr);
+      const lines = t.split("\n");
+      const kept = [];
+      for (let i = 0; i < lines.length; i++) {
+        const line = (lines[i] || "").trim();
+        if (!line) continue;
+        if (line.indexOf("常時") !== -1) continue;
+        if (line.indexOf("・効果") === 0) continue;
+        kept.push(line);
+      }
+      return kept.join("\n");
+    }
+
+    // 常時バフ（スピ/スタ）レベル
+    function getConstantBuffLevels(effectStr) {
+      const c = extractConstantText(effectStr);
+      const hasConstant = (c.indexOf("常時") !== -1);
+
+      let speed = "無し";
+      let stamina = "無し";
+
+      if (hasConstant) {
+        // 常時の「非常に」は「速く／増える」に寄せる
+        if (c.indexOf("脚が少し速く") !== -1) speed = "少し速く";
+        else if (c.indexOf("脚が非常に速く") !== -1) speed = "速く";
+        else if (c.indexOf("脚が速く") !== -1) speed = "速く";
+
+        if (c.indexOf("スタミナが少し増える") !== -1) stamina = "少し増える";
+        else if (c.indexOf("スタミナが非常に増える") !== -1) stamina = "増える";
+        else if (c.indexOf("スタミナが増える") !== -1) stamina = "増える";
+      }
+
+      return { hasConstant, speed, stamina };
+    }
+
+    // 発動効果（脚/スタ）レベル（常時除外）
+    function getActivationBuffLevels(effectStr) {
+      const a = extractActivationText(effectStr);
+
+      let leg = "無し";
+      let stamina = "無し";
+
+      if (a.indexOf("脚が非常に速く") !== -1) leg = "非常に速く";
+      else if (a.indexOf("脚が少し速く") !== -1) leg = "少し速く";
+      else if (a.indexOf("脚が速く") !== -1) leg = "速く";
+
+      if (a.indexOf("スタミナが少し増える") !== -1) stamina = "少し増える";
+      else if (a.indexOf("スタミナが非常に増える") !== -1) stamina = "増える";
+      else if (a.indexOf("スタミナが増える") !== -1) stamina = "増える";
+
+      return { leg, stamina };
+    }
+
+    // 発動時間（発動部分のみ）
+    function getActivationTimeSet(effectStr) {
+      const a = extractActivationText(effectStr);
+      const set = new Set();
+      for (let i = 0; i < TIME_PHRASES.length; i++) {
+        const p = TIME_PHRASES[i];
+        if (a.indexOf(p) !== -1) set.add(p);
+      }
+      return set;
+    }
+
+    // 発動回数（「常時」除外。時間文言が無い発動は 1回 扱い）
+    function getActivationCount(effectStr) {
+      const a = extractActivationText(effectStr);
+      if (!a.trim()) return 0;
+
+      // 「やや長い時間」に「長い時間」が含まれて二重カウントされるのを防ぐため、
+      // 1つの正規表現でまとめてカウント（長い語を先に並べる）
+      const reAll = /(とても長い時間|やや長い時間|短い時間|長い時間)/g;
+      const matches = a.match(reAll);
+      let count = matches ? matches.length : 0;
+
+// 時間文言が無いが、発動内容が書かれている場合は 1回
+      if (count === 0) {
+        const hasBuff =
+          (a.indexOf("脚が") !== -1) ||
+          (a.indexOf("スタミナが") !== -1) ||
+          (a.indexOf("根性が") !== -1) ||
+          (a.indexOf("気性が") !== -1);
+        if (hasBuff) count = 1;
+      }
+
+      return count;
+    }
+
+    function getActivationCountCategory(n) {
+      if (n >= 4) return "4+";
+      if (n === 3) return "3";
+      if (n === 2) return "2";
+      return "1-"; // 1以下（0含む）
+    }
+
+    // 選択肢が全チェックの場合は「絞り込み無し」とみなす
+    function isAllChecked(selected, allCount) {
+      return (Array.isArray(selected) && selected.length === allCount);
+    }
+    /***********************************************
+     * 発揮効果によるソート用関数
+     ***********************************************/
+    function getSortCategory(effectStr, considerStraight, straightDistance) {
+      if (!effectStr) return { category: 6, goalDistance: 0 };
+      if (effectStr.indexOf("常時") !== -1 &&
+          effectStr.indexOf("スタート") === -1 &&
+          effectStr.indexOf("コーナー") === -1 &&
+          effectStr.indexOf("最後の直線") === -1 &&
+          effectStr.indexOf("ゴールまで") === -1 &&
+          effectStr.indexOf("ゴールから") === -1) {
+        return { category: 1, goalDistance: 0 };
+      } else if (effectStr.indexOf("スタート") !== -1) {
+        return { category: 2, goalDistance: 0 };
+      } else if (effectStr.indexOf("コーナー") !== -1) {
+        return { category: 3, goalDistance: 0 };
+      } else if (effectStr.indexOf("最後の直線") !== -1) {
+        if (considerStraight && typeof straightDistance === "number" && straightDistance > 0) {
+          return { category: 5, goalDistance: straightDistance };
+        }
+        return { category: 4, goalDistance: 0 };
+      } else if (effectStr.indexOf("ゴールまで") !== -1 || effectStr.indexOf("ゴールから") !== -1) {
+        // 「ゴールまで」「ゴールから」の両方に対応
+        let goalRegex = /(ゴールまで|ゴールから)\s*(\d{1,4})m以内で/g;
+        let max = 0, m;
+        while ((m = goalRegex.exec(effectStr)) !== null) {
+          let num = parseInt(m[2], 10);
+          if (num > max) max = num;
+        }
+        return { category: 5, goalDistance: max };
+      } else {
+        return { category: 6, goalDistance: 0 };
+      }
+    }
+
+    /***********************************************
+     * 新規：各列の内容抽出関数
+     ***********************************************/
+    // 常時列：発揮効果内に「常時」があれば「〇」
+    function getConstant(effectStr) {
+      return (effectStr.indexOf("常時") !== -1) ? "〇" : "";
+    }
+    // 発動位置列：発揮効果内から各条件を抽出
+    function getActivationPosition(effectStr) {
+      let positions = [];
+      if (effectStr.indexOf("スタート") !== -1) {
+        positions.push("スタート");
+      }
+      if (effectStr.indexOf("コーナー") !== -1) {
+        positions.push("コーナー");
+      }
+      if (effectStr.indexOf("最後の直線") !== -1) {
+        positions.push("直線");
+      }
+      // 「ゴールまで」「ゴールから」の両表記に対応
+      let goalMatches = effectStr.match(/(ゴールまで|ゴールから)\s*(\d{1,4})m以内で/g);
+      if (goalMatches) {
+        goalMatches.forEach(match => {
+          let num = match.match(/(\d{1,4})/)[1]; // 数値部分は共通
+          positions.push(num + "m");
+        });
+      }
+      return positions.join("＋");
+    }
+    // コンディション列：条件修正
+    function getCondition(conditionStr) {
+      if (conditionStr.indexOf("コンディションが絶好調") !== -1) {
+        return "絶好調";
+      } else if (conditionStr.indexOf("コンディションが好調以上") !== -1) {
+        return "好調";
+      } else if (conditionStr.indexOf("イレ込んでいる") !== -1) {
+        return "イレ込み";
+      }
+      return "";
+    }
+    // 縛り列：各キーワードチェック
+    function getRestriction(conditionStr) {
+      let restrictions = [];
+      if (conditionStr.indexOf("番手以下") !== -1 ||
+          conditionStr.indexOf("番手以上") !== -1 ||
+          conditionStr.indexOf("他馬と競り合う") !== -1 ||
+          conditionStr.indexOf("自分が最も速く") !== -1) {
+        restrictions.push("番手");
+      }
+      if (conditionStr.indexOf("番人気以上") !== -1 ||
+          conditionStr.indexOf("番人気以下") !== -1 ||
+          conditionStr.indexOf("一定以上の人気") !== -1 ||
+          conditionStr.indexOf("人気がない") !== -1 ||
+          conditionStr.indexOf("人気に印") !== -1) {
+        restrictions.push("人気");
+      }
+      if (conditionStr.indexOf("年齢が") !== -1) {
+        restrictions.push("年齢");
+      }
+      return restrictions.join("＋");
+    }
+
+    /***********************************************
+     * テーブル更新処理（重複除去付き）
+     ***********************************************/
+    
+    function updateTable(data) {
+      const tbody = document.getElementById('dataTable').getElementsByTagName('tbody')[0];
+      tbody.innerHTML = '';
+      data.forEach(row => {
+        const tr = document.createElement('tr');
+
+        // 馬名/非凡名（2リンク + タグ）
+        const tdName = document.createElement('td');
+
+        // 馬名リンク
+        const aHorse = document.createElement('a');
+        aHorse.href = row.horseLink || "#";
+        aHorse.textContent = row.horseName || "";
+        aHorse.target = "_blank";
+        tdName.appendChild(aHorse);
+
+        tdName.appendChild(document.createElement('br'));
+
+        // 非凡名リンク（タグ付き）
+        const aHibon = document.createElement('a');
+        aHibon.href = row.hibonLink || "#";
+        aHibon.textContent = (row.hibonTagText || "") + (row.hibonName || "");
+        aHibon.target = "_blank";
+        tdName.appendChild(aHibon);
+
+        tr.appendChild(tdName);
+
+        // 常時列
+        const tdConstant = document.createElement('td');
+        tdConstant.textContent = getConstant(row.effectText || "");
+        tr.appendChild(tdConstant);
+
+        // 発動位置列
+        const tdPosition = document.createElement('td');
+        tdPosition.textContent = getActivationPosition(row.effectText || "");
+        tr.appendChild(tdPosition);
+
+        // コンディション列（12pt）
+        const tdConditionCol = document.createElement('td');
+        tdConditionCol.textContent = getCondition(row.condText || "");
+        tdConditionCol.style.fontSize = "12pt";
+        tr.appendChild(tdConditionCol);
+
+        // 縛り列（12pt）※騎手縛りはフィルタ判定しない／表示のみ
+        const tdRestriction = document.createElement('td');
+        tdRestriction.textContent = getHibonRestriction(row.condText || "");
+        tdRestriction.style.fontSize = "12pt";
+        tr.appendChild(tdRestriction);
+
+        // 発揮効果（改行処理、12pt）
+        const tdEffect = document.createElement('td');
+        let effectText = row.effectText || "";
+        effectText = effectText.replace(/\s+(\u30FB)/g, '<br>$1');
+        tdEffect.innerHTML = effectText;
+        tdEffect.style.fontSize = "12pt";
+        tr.appendChild(tdEffect);
+
+        // 発揮条件（改行処理、12pt）
+        const tdCond = document.createElement('td');
+        let condText = row.condText || "";
+        condText = condText.replace(/\s+(\u30FB)/g, '<br>$1');
+        tdCond.innerHTML = condText;
+        tdCond.style.fontSize = "12pt";
+        tr.appendChild(tdCond);
+
+        // 発揮対象（12pt）
+        const tdTarget = document.createElement('td');
+        tdTarget.textContent = row.targetText || "";
+        tdTarget.style.fontSize = "12pt";
+        tr.appendChild(tdTarget);
+
+        // 発揮確率（12pt）
+        const tdProb = document.createElement('td');
+        tdProb.textContent = row.probText || "";
+        tdProb.style.fontSize = "12pt";
+        tr.appendChild(tdProb);
+
+        tbody.appendChild(tr);
+      });
+    }
+
+    /***********************************************
+     * 非凡：否定条件（〜以外）＋騎手縛り抽出
+     **********************************************/
+    function normalizeTextForHibon(s) {
+      if (!s) return "";
+      return String(s)
+        .replace(/[（]/g, "(").replace(/[）]/g, ")")
+        .replace(/\u3000/g, " ")
+        .replace(/\r\n/g, "\n");
+    }
+
+    // 騎手縛り：表示のみ（フィルタ判定には使わない）
+    function getHibonRestriction(conditionStr) {
+      if (!conditionStr) return "";
+      const t = normalizeTextForHibon(conditionStr);
+      const lines = t.split("\n").map(x => x.trim()).filter(Boolean);
+
+      // 「騎手」が入る行を優先
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (line.indexOf("騎手") !== -1) {
+          // 「・条件」や中黒を軽く除去（最小限）
+          return line.replace(/^・+/, "").replace(/^条件\d+\s*/, "").trim();
+        }
+      }
+      return "";
+    }
+
+    // 騎手縛り行を削除（否定条件抽出の誤判定防止用）
+    function removeJockeyConstraintForEval(conditionStr) {
+      if (!conditionStr) return "";
+      const t = normalizeTextForHibon(conditionStr);
+      const lines = t.split("\n");
+      const kept = [];
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (line.indexOf("騎手") !== -1) continue;
+        kept.push(line);
+      }
+      return kept.join("\n");
+    }
+
+    // 「A,B以外」から除外レース名を抽出（区切り揺れ＆括弧揺れ対応）
+    function extractExcludeRaces(conditionStr) {
+      if (!conditionStr) return [];
+      let t = removeJockeyConstraintForEval(conditionStr);
+      t = normalizeTextForHibon(t);
+
+      // 区切り統一（読点/全角カンマ/改行→カンマ）
+      t = t.replace(/[、，]/g, ",").replace(/\n+/g, ",");
+      t = t.replace(/\s*,\s*/g, ",").replace(/,+/g, ",");
+
+      const out = [];
+      const re = /([^,]+(?:,[^,]+)*)以外/g;
+      let m;
+      while ((m = re.exec(t)) !== null) {
+        const block = (m[1] || "").trim();
+        if (!block) continue;
+        block.split(",").forEach(tok => {
+          const v = tok.trim();
+          if (v) out.push(v);
+        });
+      }
+      return out;
+    }
+
+    // 否定ブロックを取り除いた文字列（肯定レース検出用）
+    function removeExclusionBlocks(conditionStr) {
+      if (!conditionStr) return "";
+      let t = removeJockeyConstraintForEval(conditionStr);
+      t = normalizeTextForHibon(t);
+      t = t.replace(/[、，]/g, ",").replace(/\n+/g, ",");
+      t = t.replace(/\s*,\s*/g, ",").replace(/,+/g, ",");
+      return t.replace(/([^,]+(?:,[^,]+)*)以外/g, "");
+    }
+
+    // レース名チェック（否定＝最優先）
+    function checkRaceName(conditionStr, selectedRaceName) {
+      if (!conditionStr) return true;
+      if (!selectedRaceName) return true;
+
+      const sel = normalizeTextForHibon(selectedRaceName).trim();
+
+      // 1) 否定（以外）を最優先
+      const excludes = extractExcludeRaces(conditionStr).map(x => normalizeTextForHibon(x).trim());
+      for (let i = 0; i < excludes.length; i++) {
+        if (excludes[i] === sel) return false;
+      }
+
+      // 2) 肯定レースが書かれている場合だけ一致必須（否定ブロックは除去して判定）
+      const condNoExcl = removeExclusionBlocks(conditionStr);
+      const knownRaces = raceConditions.map(rc => rc.race);
+      let foundPositive = false;
+      for (let i = 0; i < knownRaces.length; i++) {
+        if (condNoExcl.indexOf(knownRaces[i]) !== -1) { foundPositive = true; break; }
+      }
+      if (foundPositive) {
+        return condNoExcl.indexOf(selectedRaceName) !== -1;
+      }
+      return true;
+    }
+
+    /***********************************************
+     * 非凡：種別（4種）＋通常/特化の2行生成
+     **********************************************/
+    function hasTokukaCondition(record) {
+      return !!(
+        (record["特化_発揮効果"] && String(record["特化_発揮効果"]).trim() !== "") ||
+        (record["特化_発揮条件"] && String(record["特化_発揮条件"]).trim() !== "") ||
+        (record["特化_発揮対象"] && String(record["特化_発揮対象"]).trim() !== "") ||
+        (record["特化_発揮確率"] && String(record["特化_発揮確率"]).trim() !== "")
+      );
+    }
+
+    function buildDisplayRows(rawRecords) {
+      const rows = [];
+      rawRecords.forEach(rec => {
+        const baseType = (rec["非凡種類"] || "").trim();
+        // 非凡種類が空白（=非凡が無い馬）は除外
+        if (!baseType) return;
+
+        const isNijuu = (baseType === "弐重非凡");
+        const tokukaExists = hasTokukaCondition(rec);
+
+        // 特化がある場合は「特化行 → 通常行」の順で追加
+        if (!isNijuu && tokukaExists) {
+          // 特化行（T）
+          const tRow = {
+            rowType: "T",
+            typeCategory: "特化非凡",
+            horseName: ((rec["天性"] || "").trim() ? "[" + (rec["天性"] || "").trim() + "]" : "") + (rec["馬名"] || ""),
+            horseLink: (rec["link"] || ""),
+            hibonName: (rec["非凡"] || ""),
+            hibonLink: (rec["hibon_link"] || ""),
+            effectText: (rec["特化_発揮効果"] || ""),
+            condText: (rec["特化_発揮条件"] || ""),
+            targetText: (rec["特化_発揮対象"] || ""),
+            probText: (rec["特化_発揮確率"] || ""),
+            tenseiText: (rec["天性"] || ""),
+            factorText: (rec["因子"] || "")
+          };
+          tRow.hibonTagText = "[特化]";
+          rows.push(tRow);
+
+          // 通常行（N）
+          const nRow = {
+            rowType: "N",
+            typeCategory: "非特化非凡",
+            horseName: ((rec["天性"] || "").trim() ? "[" + (rec["天性"] || "").trim() + "]" : "") + (rec["馬名"] || ""),
+            horseLink: (rec["link"] || ""),
+            hibonName: (rec["非凡"] || ""),
+            hibonLink: (rec["hibon_link"] || ""),
+            effectText: (rec["発揮効果"] || ""),
+            condText: (rec["発揮条件"] || ""),
+            targetText: (rec["発揮対象"] || ""),
+            probText: (rec["発揮確率"] || ""),
+            tenseiText: (rec["天性"] || ""),
+            factorText: (rec["因子"] || "")
+          };
+          nRow.hibonTagText = "[非特化]";
+          rows.push(nRow);
+          return;
+        }
+
+        // 通常行のみ（弐重 or 通常非凡）
+        const nRow = {
+          rowType: "N",
+          typeCategory: isNijuu ? "弐重非凡" : "非凡",
+          horseName: ((rec["天性"] || "").trim() ? "[" + (rec["天性"] || "").trim() + "]" : "") + (rec["馬名"] || ""),
+          horseLink: (rec["link"] || ""),
+          hibonName: (rec["非凡"] || ""),
+          hibonLink: (rec["hibon_link"] || ""),
+          effectText: (rec["発揮効果"] || ""),
+          condText: (rec["発揮条件"] || ""),
+          targetText: (rec["発揮対象"] || ""),
+          probText: (rec["発揮確率"] || ""),
+          tenseiText: (rec["天性"] || ""),
+            factorText: (rec["因子"] || "")
+        };
+        const tagsN = [];
+        if (isNijuu) {
+          tagsN.push("[弐重]");
+        } else {
+          // 通常非凡（非凡種類=非凡）のみ [非凡] を付与
+          if (baseType === "非凡") tagsN.push("[非凡]");
+        }
+        nRow.hibonTagText = tagsN.join("");
+        rows.push(nRow);
+      });
+      return rows;
+    }
+
+    
+    /***********************************************
+     * UI状態を1回で取得（軽量化: DOM参照の集約）
+     **********************************************/
+    function collectUIState() {
+      return {
+        typeSelected: getCheckedValues('hibonType'),
+        jockeySelected: getCheckedValues('jockey'),
+        weatherSelected: getCheckedValues('weather'),
+        babaSelected: getCheckedValues('baba'),
+        effectSelected: getCheckedValues('effect'),
+        tenseiOnly: (document.getElementById('tenseiOnly') || {}).checked === true,
+        threeFactorsOnly: (document.getElementById('threeFactorsOnly') || {}).checked === true,
+
+        // 発動効果フィルター系
+        timeSelected: getCheckedValues('actTime'),
+        constSpeedSelected: getCheckedValues('constSpeed'),
+        constStaminaSelected: getCheckedValues('constStamina'),
+        actLegSelected: getCheckedValues('actLeg'),
+        actStaminaSelected: getCheckedValues('actStamina'),
+        actCountSelected: getCheckedValues('actCount'),
+
+        // 発動位置ソート
+        sortEffectChecked: (document.getElementById('sortEffect') || {}).checked === true,
+        considerStraightChecked: (document.getElementById('considerStraightDistance') || {}).checked === true
+      };
+    }
+
+/***********************************************
+     * 全体フィルタ処理（mydata.csv）
+     **********************************************/
+    function filterCSVData() {
+      const selectEl = document.getElementById('raceConditionSelect');
+      const selectedIndex = selectEl ? selectEl.value : "";
+      let rc = null;
+
+      if (selectedIndex !== "" && selectEl) {
+        const opt = selectEl.options[selectEl.selectedIndex];
+        const selectedRaceName = opt ? (opt.text || "").trim() : "";
+
+        for (let i = 0; i < raceConditions.length; i++) {
+          if (raceConditions[i] && raceConditions[i].race === selectedRaceName) {
+            rc = raceConditions[i];
+            break;
+          }
+        }
+        if (!rc) {
+          const idx = parseInt(selectedIndex, 10);
+          if (!isNaN(idx) && raceConditions[idx]) rc = raceConditions[idx];
+        }
+      }
+
+      // 直線距離表示（ユーザー確認用）
+      const straightInfoEl = document.getElementById("straightDistanceInfo");
+      if (straightInfoEl) {
+        if (rc && typeof rc.straight === "number") {
+          straightInfoEl.textContent = rc.straight + "m";
+        } else {
+          straightInfoEl.textContent = "--";
+        }
+      }
+      const ui = collectUIState();
+const displayRows = buildDisplayRows(csvData);
+
+      let filtered = displayRows.filter(row => {
+        // 種別チェック
+        if (ui.typeSelected.length > 0 && ui.typeSelected.indexOf(row.typeCategory) === -1) return false;
+
+        // 天性フィルタ（天性ありのみ）
+        if (ui.tenseiOnly) {
+          const t = (row.tenseiText || "").trim();
+          if (!t) return false;
+        }
+
+
+        // 3因子のみフィルタ（因子列が漢字3文字のものだけ残す）
+        if (ui.threeFactorsOnly) {
+          const f = (row.factorText || "").trim();
+          const ks = f.match(/[\u4E00-\u9FFF]/g) || [];
+          if (ks.length !== 3) return false;
+        }
+
+        const cond = row.condText || "";
+        const effect = row.effectText || "";
+
+        let raceConditionPassed = true;
+        if (rc) {
+          raceConditionPassed = checkDistance(cond, rc.distance) &&
+                                checkTurfDirt(cond, rc.turfDirt) &&
+                                checkRacecourse(cond, rc.racecourse) &&
+                                checkRaceName(cond, rc.race) &&
+                                checkAge(cond, rc.age) &&
+                                checkGrade(cond, rc.grade);
+        }
+        const jockeyPassed = checkJockey(cond, ui.jockeySelected);
+        const weatherPassed = checkWeather(cond, ui.weatherSelected);
+        const babaPassed = checkBaba(cond, ui.babaSelected);
+        const effectPassed = checkEffect(effect, ui.effectSelected);
+
+
+        // ===== 追加フィルタ判定（発動時間／常時バフ／発動効果／発動回数） =====
+        const constLv = getConstantBuffLevels(effect);
+        const actLv = getActivationBuffLevels(effect);
+        const timeSet = getActivationTimeSet(effect);
+        const actCount = getActivationCount(effect);
+        const actCountCat = getActivationCountCategory(actCount);
+
+        // 発動時間（発動部分のみ）A案：チェックされた時間が1つでも含まれていればOK
+        if (!isAllChecked(ui.timeSelected, 4)) {
+          if (!ui.timeSelected || ui.timeSelected.length === 0) return false;
+          if (timeSet.size === 0) return false; // 時間文言が無いものは落とす（仕様）
+          let okTime = false;
+          for (let i = 0; i < ui.timeSelected.length; i++) {
+            if (timeSet.has(ui.timeSelected[i])) { okTime = true; break; }
+          }
+          if (!okTime) return false;
+        }
+
+        // 常時バフ：スピ
+        if (!isAllChecked(ui.constSpeedSelected, 3)) {
+          if (!ui.constSpeedSelected || ui.constSpeedSelected.length === 0) return false;
+          if (ui.constSpeedSelected.indexOf(constLv.speed) === -1) return false;
+        }
+
+        // 常時バフ：スタ
+        if (!isAllChecked(ui.constStaminaSelected, 3)) {
+          if (!ui.constStaminaSelected || ui.constStaminaSelected.length === 0) return false;
+          if (ui.constStaminaSelected.indexOf(constLv.stamina) === -1) return false;
+        }
+
+        // 発動効果：脚（常時除外）
+        if (!isAllChecked(ui.actLegSelected, 4)) {
+          if (!ui.actLegSelected || ui.actLegSelected.length === 0) return false;
+          if (ui.actLegSelected.indexOf(actLv.leg) === -1) return false;
+        }
+
+        // 発動効果：スタ（常時除外）
+        if (!isAllChecked(ui.actStaminaSelected, 3)) {
+          if (!ui.actStaminaSelected || ui.actStaminaSelected.length === 0) return false;
+          if (ui.actStaminaSelected.indexOf(actLv.stamina) === -1) return false;
+        }
+
+        // 発動回数（常時は含めない）
+        if (!isAllChecked(ui.actCountSelected, 4)) {
+          if (!ui.actCountSelected || ui.actCountSelected.length === 0) return false;
+          if (ui.actCountSelected.indexOf(actCountCat) === -1) return false;
+        }
+
+
+        return raceConditionPassed && jockeyPassed && weatherPassed && babaPassed && effectPassed;
+      });
+
+      // 発揮位置別ソートが有効なら
+      const sortEffectChecked = ui.sortEffectChecked;
+      const considerStraight = ui.considerStraightChecked;
+      const straightDistance = (rc && typeof rc.straight === "number") ? rc.straight : null;
+
+
+      if (sortEffectChecked) {
+        filtered.sort((a, b) => {
+          const sortA = getSortCategory(a.effectText || "", considerStraight, straightDistance);
+          const sortB = getSortCategory(b.effectText || "", considerStraight, straightDistance);
+          if (sortA.category !== sortB.category) return sortA.category - sortB.category;
+          if (sortA.category === 5 && sortB.category === 5) return sortB.goalDistance - sortA.goalDistance;
+          return 0;
+        });
+      }
+
+      updateTable(filtered);
+    }
+
+
+    
+    
+    // 発動効果フィルター：デフォルトに戻す（初期状態へ復帰）
+    (function(){
+      const box = document.querySelector('.effect-filter-box');
+      const btn = document.getElementById('resetEffectFilters');
+      if (!box || !btn) return;
+
+      // 初期状態（読み込み直後）の checked を保存
+      const defaults = new Map();
+      box.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+        defaults.set(cb, cb.checked);
+      });
+
+      btn.addEventListener('click', function(){
+        box.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+          if (defaults.has(cb)) cb.checked = defaults.get(cb);
+        });
+        if (typeof filterCSVData === 'function') filterCSVData();
+      });
+
+    // 発動効果フィルター：全て外す（全チェックをOFF）
+    (function(){
+      const box = document.querySelector('.effect-filter-box');
+      const btn = document.getElementById('clearEffectFilters');
+      if (!box || !btn) return;
+
+      btn.addEventListener('click', function(){
+        box.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+          cb.checked = false;
+        });
+        if (typeof filterCSVData === 'function') filterCSVData();
+      });
+    })();
+
+
+    })();
+
+
+    // 各フィルター変更時に実行
+    document.getElementById('raceConditionSelect').addEventListener('change', filterCSVData);
+    document.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+      cb.addEventListener('change', filterCSVData);
+    });
+  </script>
+</body>
+</html>
+
+
+
+
